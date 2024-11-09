@@ -6,8 +6,8 @@ import com.google.devtools.ksp.processing.SymbolProcessor
 import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSAnnotated
 import com.google.devtools.ksp.symbol.KSClassDeclaration
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.Import
+import com.squareup.kotlinpoet.*
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.writeTo
 
 class ApiProcessor(
@@ -24,19 +24,48 @@ class ApiProcessor(
         handlerFileSpec.build().writeTo(environment.codeGenerator, true)
     }
 
+
     override fun process(resolver: Resolver): List<KSAnnotated> {
 
         val ksAnnotated = resolver.getSymbolsWithAnnotation(ServiceImpl::class.qualifiedName!!).toList()
+
+        val clsSet: MutableSet<TypeSpec> = mutableSetOf()
 
         for (annotated in ksAnnotated) {
             if (annotated !is KSClassDeclaration) {
                 environment.logger.error("should be a class", annotated)
             } else {
-                ApiHandlerClassBuilder(resolver, environment, annotated).build().let {
-                    handlerFileSpec.addType(it)
+                val cls = ApiHandlerClassBuilder(annotated).build().apply {
+                    handlerFileSpec.addType(this)
                 }
+                clsSet.add(cls)
             }
         }
+
+        handlerFileSpec.addType(
+            TypeSpec.classBuilder("GeneratedHandlers")
+                .addFunction(
+                    FunSpec.builder("getApiHost")
+                        .addParameter(
+                            ParameterSpec.builder(
+                                "impls",
+                                LIST.parameterizedBy(ClassName.bestGuess("cn.llonvne.type.ApiImplement"))
+                            ).build()
+                        )
+                        .returns(LIST.parameterizedBy(ClassName.bestGuess("cn.llonvne.type.ApiHost")))
+                        .addCode(
+                            "return listOf(%L)", CodeBlock.builder()
+                                .apply {
+                                    add(clsSet.joinToString(",") {
+                                        "${it.name}.from(impls)"
+                                    })
+                                }
+                                .build()
+                        )
+                        .build()
+                )
+                .build()
+        )
 
         return listOf()
     }
