@@ -1,22 +1,24 @@
 package cn.llonvne.ksp
 
 import cn.llonvne.ServiceImpl
-import com.google.devtools.ksp.processing.Resolver
-import com.google.devtools.ksp.processing.SymbolProcessorEnvironment
 import com.google.devtools.ksp.symbol.KSClassDeclaration
 import com.google.devtools.ksp.symbol.KSFunctionDeclaration
 import com.google.devtools.ksp.symbol.KSType
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.ksp.toClassName
-import kotlin.reflect.KClass
 
-class ApiHandlerClassBuilder(
-    private val ksClassDeclaration: KSClassDeclaration
-) {
-    private val api = ksClassDeclaration.annotations.toList().filter {
-        it.shortName.asString() == ServiceImpl::class.simpleName
-    }.toList().first().arguments[0].value as KSType
+class ApiHandlerClassBuilder(private val ksClassDeclaration: KSClassDeclaration) {
+    private val api =
+        ksClassDeclaration
+            .annotations
+            .toList()
+            .filter { it.shortName.asString() == ServiceImpl::class.simpleName }
+            .toList()
+            .first()
+            .arguments[0]
+            .value as
+                KSType
 
     private val clsName = ksClassDeclaration.toClassName().simpleName + "Handler"
 
@@ -42,13 +44,7 @@ class ApiHandlerClassBuilder(
 
     private val OkStatusRef = MemberName(StatusClassRef, "OK")
 
-    private fun primaryConstructor() = FunSpec.constructorBuilder()
-        .addParameter(instanceName, ksClassDeclaration.toClassName())
-        .build()
-
-    private fun resolveParameter(
-        ksFunctionDeclaration: KSFunctionDeclaration
-    ): CodeBlock {
+    private fun resolveParameter(ksFunctionDeclaration: KSFunctionDeclaration): CodeBlock {
         return CodeBlock.builder()
             .addStatement(
                 "val req = Body.auto<%L>().toLens()(it);",
@@ -63,16 +59,31 @@ class ApiHandlerClassBuilder(
                 "val resp = inner.%L(%L);",
                 ksFunctionDeclaration,
                 CodeBlock.builder()
-                    .add(ksFunctionDeclaration.parameters.joinToString(",") { "req." + it.name?.asString() })
+                    .add(
+                        ksFunctionDeclaration.parameters.joinToString(",") {
+                            "req." + it.name?.asString()
+                        }
+                    )
                     .build()
-            ).apply {
-                val retType = ksFunctionDeclaration.returnType?.resolve()?.declaration?.qualifiedName?.asString()
+            )
+            .apply {
+                val serviceRespType = ClassName.bestGuess("cn.llonvne.type.ServiceResponse")
+
+                val retType =
+                    ksFunctionDeclaration
+                        .returnType
+                        ?.resolve()
+                        ?.declaration
+                        ?.qualifiedName
+                        ?.asString()
                 if (retType != null && retType != "kotlin.Unit") {
                     addStatement(
-                        "%T(%M).with(Body.auto<%T>().toLens() of resp)",
+                        "%T(%M).with(Body.auto<%T<%T>>().toLens() of %T(resp))",
                         ResponseClassRef,
                         OkStatusRef,
-                        ClassName.bestGuess(retType)
+                        serviceRespType,
+                        ClassName.bestGuess(retType),
+                        serviceRespType
                     )
                 } else {
                     addStatement(
@@ -96,9 +107,7 @@ class ApiHandlerClassBuilder(
                 }
             }
             .add(resolveCalling(ksFunctionDeclaration))
-
             .build()
-
     }
 
     private fun requestClsName(ksFunctionDeclaration: KSFunctionDeclaration): String {
@@ -113,43 +122,46 @@ class ApiHandlerClassBuilder(
         if (decl !is KSClassDeclaration) {
             throw RuntimeException("${decl.simpleName.asString()} should be class")
         }
-        val functions = decl.getAllFunctions()
-            .filter { it.simpleName.asString() !in notIncludedFunctions }
+        val functions =
+            decl.getAllFunctions().filter { it.simpleName.asString() !in notIncludedFunctions }
 
-        val mapping = functions.map { fn ->
-            CodeBlock.of(
-                "%S bind %M to %L",
-                fn, PostMemeberRef, CodeBlock.of("{ %L }", buildHandler(decl, fn))
-            )
-        }.joinToString(",") { it.toString() }
+        val mapping =
+            functions
+                .map { fn ->
+                    CodeBlock.of(
+                        "%S bind %M to %L",
+                        fn,
+                        PostMemeberRef,
+                        CodeBlock.of("{ %L }", buildHandler(decl, fn))
+                    )
+                }
+                .joinToString(",") { it.toString() }
 
-        functions.mapNotNull {
-            if (it.parameters.isNotEmpty()) {
-                buildRequestCls(it)
-            } else {
-                null
+        functions
+            .mapNotNull {
+                if (it.parameters.isNotEmpty()) {
+                    buildRequestCls(it)
+                } else {
+                    null
+                }
             }
-        }.forEach { addType(it) }
+            .forEach { addType(it) }
 
         addFunction(
             FunSpec.builder("getHandler")
                 .addModifiers(KModifier.OVERRIDE)
                 .returns(ClassName.bestGuess(httpHandlerClassRef))
-                .addCode(
-                    CodeBlock.of(
-                        "return %M(%L)", routesFuncRef, mapping
-                    )
-                )
+                .addCode(CodeBlock.of("return %M(%L)", routesFuncRef, mapping))
                 .build()
         )
         return this
     }
 
     private fun buildRequestCls(ksFunctionDeclaration: KSFunctionDeclaration): TypeSpec {
-        val parameters = ksFunctionDeclaration.parameters.associate {
-            it.name?.asString() to it.type
-        }
-        return TypeSpec.classBuilder(requestClsName(ksFunctionDeclaration)).addModifiers(KModifier.DATA)
+        val parameters =
+            ksFunctionDeclaration.parameters.associate { it.name?.asString() to it.type }
+        return TypeSpec.classBuilder(requestClsName(ksFunctionDeclaration))
+            .addModifiers(KModifier.DATA)
             .apply {
                 parameters.forEach { (name, type) ->
                     addProperty(
@@ -158,21 +170,32 @@ class ApiHandlerClassBuilder(
                             .build()
                     )
                 }
-                primaryConstructor(FunSpec.constructorBuilder()
-                    .apply {
-                        parameters.map { (name, type) ->
-                            ParameterSpec.builder(name!!, type.resolve().toClassName())
-                                .build()
-                        }.forEach { addParameter(it) }
-                    }
-                    .build())
+                primaryConstructor(
+                    FunSpec.constructorBuilder()
+                        .apply {
+                            parameters
+                                .map { (name, type) ->
+                                    ParameterSpec.builder(
+                                        name!!,
+                                        type.resolve().toClassName()
+                                    )
+                                        .build()
+                                }
+                                .forEach { addParameter(it) }
+                        }
+                        .build()
+                )
             }
             .build()
     }
 
     fun build(): TypeSpec {
         return TypeSpec.classBuilder(clsName)
-            .primaryConstructor(primaryConstructor())
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter(instanceName, ksClassDeclaration.toClassName())
+                    .build()
+            )
             .addProperty(
                 PropertySpec.builder(instanceName, ksClassDeclaration.toClassName())
                     .initializer(instanceName)
@@ -181,10 +204,10 @@ class ApiHandlerClassBuilder(
             .addFunction(
                 FunSpec.builder("apiCls")
                     .returns(
-                        ClassName.bestGuess("kotlin.reflect.KClass").parameterizedBy(
-                            STAR
-                        )
-                    ).addCode("return apiCls")
+                        ClassName.bestGuess("kotlin.reflect.KClass")
+                            .parameterizedBy(STAR)
+                    )
+                    .addCode("return apiCls")
                     .addModifiers(KModifier.OVERRIDE)
                     .build()
             )
@@ -193,10 +216,11 @@ class ApiHandlerClassBuilder(
                 TypeSpec.companionObjectBuilder()
                     .addProperty(
                         PropertySpec.builder(
-                            "apiCls", ClassName.bestGuess("kotlin.reflect.KClass").parameterizedBy(
-                                STAR
-                            )
-                        ).initializer("%T::class", api.toClassName())
+                            "apiCls",
+                            ClassName.bestGuess("kotlin.reflect.KClass")
+                                .parameterizedBy(STAR)
+                        )
+                            .initializer("%T::class", api.toClassName())
                             .build()
                     )
                     .addFunction(
@@ -204,17 +228,23 @@ class ApiHandlerClassBuilder(
                             .returns(ClassName.bestGuess(clsName))
                             .addParameter(
                                 ParameterSpec.builder(
-                                    "impls", LIST.parameterizedBy(
-                                        ClassName.bestGuess("cn.llonvne.type.ApiImplement")
+                                    "impls",
+                                    LIST.parameterizedBy(
+                                        ClassName.bestGuess(
+                                            "cn.llonvne.type.ApiImplement"
+                                        )
                                     )
-                                ).build()
+                                )
+                                    .build()
                             )
                             .addCode(
                                 CodeBlock.builder()
                                     .addStatement(
                                         "return %L(impls.find { it.apiCls() == apiCls } as %L)",
                                         clsName,
-                                        ksClassDeclaration.toClassName().simpleName
+                                        ksClassDeclaration
+                                            .toClassName()
+                                            .simpleName
                                     )
                                     .build()
                             )

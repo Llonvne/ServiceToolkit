@@ -19,10 +19,12 @@ class ApiTypeResolver(private val env: SymbolProcessorEnvironment) {
 
         val clsName = type.declaration.simpleName.asString() + "Proxy"
 
+        val requestTypeSpec = TypeSpec.companionObjectBuilder()
+
         val generated =
             TypeSpec.classBuilder(clsName)
                 .addSuperinterface(type.toClassName())
-                .addFunctions(implementMethods(type))
+                .addFunctions(implementMethods(type, requestTypeSpec))
                 .addProperty(
                     PropertySpec.builder("handler", httpHandlerType)
                         .initializer("handler")
@@ -42,16 +44,21 @@ class ApiTypeResolver(private val env: SymbolProcessorEnvironment) {
                         )
                         .build()
                 )
+                .addType(requestTypeSpec.build())
                 .build()
 
         return generated
     }
 
-    private fun implementMethods(type: KSType): List<FunSpec> {
+    private fun implementMethods(type: KSType, requestTypeSpec: TypeSpec.Builder): List<FunSpec> {
         val clsDeclaration = type.declaration as KSClassDeclaration
         return clsDeclaration
             .getAllFunctions()
             .filter { it.simpleName.asString() !in notIncludedFunctions }
+            .apply {
+                filter { it.parameters.isNotEmpty() }
+                    .forEach { requestTypeSpec.addType(buildRequestCls(it)) }
+            }
             .map { implementMethod(type, it) }
             .toList()
     }
@@ -87,14 +94,37 @@ class ApiTypeResolver(private val env: SymbolProcessorEnvironment) {
     }
 
     private fun implementHandlerRequest(type: KSType, ksFunctionDeclaration: KSFunctionDeclaration): CodeBlock {
-        return CodeBlock.builder()
-            .addStatement("handler(Request(POST,meta.uri(%S)))", ksFunctionDeclaration.simpleName.asString())
-            .build()
+        if (ksFunctionDeclaration.parameters.isNotEmpty()) {
+            val reqType = requestClsName(ksFunctionDeclaration)
+            val reqBodyCode =
+                CodeBlock.builder().add(
+                    ".with(Body.auto<%L>().toLens() of %L(%L))",
+                    reqType,
+                    reqType,
+                    ksFunctionDeclaration.parameters.joinToString(",") { it.name?.asString()!! }
+                )
+            return CodeBlock.builder()
+                .addStatement(
+                    "handler(Request(POST,meta.uri(%S))%L)",
+                    ksFunctionDeclaration.simpleName.asString(),
+                    reqBodyCode.build()
+                )
+                .build()
+        } else {
+            return CodeBlock.builder()
+                .addStatement("handler(Request(POST,meta.uri(%S)))", ksFunctionDeclaration.simpleName.asString())
+                .build()
+        }
     }
 
     private fun implementBodyLens(retType: KSType, respCode: CodeBlock): CodeBlock {
         return CodeBlock.builder()
-            .add("Body.auto<%T>().toLens()(%L)", retType.toClassName(), respCode)
+            .add(
+                "Body.auto<%T<%T>>().toLens()(%L).value",
+                ClassName.bestGuess("cn.llonvne.type.ServiceResponse"),
+                retType.toClassName(),
+                respCode
+            )
             .build()
     }
 
@@ -104,5 +134,41 @@ class ApiTypeResolver(private val env: SymbolProcessorEnvironment) {
             ParameterSpec.builder(it.name?.getShortName()!!, it.type.resolve().toClassName())
                 .build()
         }
+    }
+
+    private fun requestClsName(ksFunctionDeclaration: KSFunctionDeclaration): String {
+        return ksFunctionDeclaration.simpleName.asString() + "Request"
+    }
+
+    private fun buildRequestCls(ksFunctionDeclaration: KSFunctionDeclaration): TypeSpec {
+        val parameters =
+            ksFunctionDeclaration.parameters.associate { it.name?.asString() to it.type }
+        return TypeSpec.classBuilder(requestClsName(ksFunctionDeclaration))
+            .addModifiers(KModifier.DATA)
+            .apply {
+                parameters.forEach { (name, type) ->
+                    addProperty(
+                        PropertySpec.builder(name!!, type.resolve().toClassName())
+                            .initializer(name)
+                            .build()
+                    )
+                }
+                primaryConstructor(
+                    FunSpec.constructorBuilder()
+                        .apply {
+                            parameters
+                                .map { (name, type) ->
+                                    ParameterSpec.builder(
+                                        name!!,
+                                        type.resolve().toClassName()
+                                    )
+                                        .build()
+                                }
+                                .forEach { addParameter(it) }
+                        }
+                        .build()
+                )
+            }
+            .build()
     }
 }

@@ -13,7 +13,7 @@ class CallProcessor(val environment: SymbolProcessorEnvironment) : SymbolProcess
     private val clientFileSpec = FileSpec.builder("cn.llonvne", "api")
         .addImport("org.http4k.core", "Request")
         .addImport("org.http4k.core.Method", "GET", "POST")
-        .addImport("org.http4k.core", "Body")
+        .addImport("org.http4k.core", "Body", "with")
         .addImport("org.http4k.format.Jackson", "auto")
 
     override fun finish() {
@@ -23,7 +23,7 @@ class CallProcessor(val environment: SymbolProcessorEnvironment) : SymbolProcess
     private val typeResolver = ApiTypeResolver(environment)
 
     override fun process(resolver: Resolver): List<KSAnnotated> {
-        val types = resolver.getSymbolsWithAnnotation("cn.llonvne.GenerateCallerProxy")
+        resolver.getSymbolsWithAnnotation("cn.llonvne.GenerateCallerProxy")
             .flatMap { it.annotations }
             .filter {
                 it.shortName.asString() == "GenerateCallerProxy"
