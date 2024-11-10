@@ -11,13 +11,7 @@ import org.http4k.server.asServer
 import kotlin.reflect.KClass
 import kotlin.reflect.full.memberFunctions
 
-
-private class ServiceToolkitApplication(
-    val port: Int,
-    val apiImplement: List<ApiImplement>,
-) : ServiceToolkitApi {
-
-
+fun getApiHostMap(apiImplement: List<ApiImplement>): Map<KClass<*>, ApiHost> {
     val cls: KClass<*> = Class.forName("cn.llonvne.GeneratedHandlers").kotlin
     val generatedHandlers = cls.constructors.first().call()
     val method = cls.memberFunctions.first {
@@ -25,20 +19,25 @@ private class ServiceToolkitApplication(
     }
     val apiHosts: List<ApiHost> = method.call(generatedHandlers, apiImplement)
         .also { println(it) } as List<ApiHost>
-    val handlerMap = apiHosts.associateBy { it.apiCls() }
+    return apiHosts.associateBy { it.apiCls() }
+}
+
+private class ServiceToolkitApplication(
+    port: Int,
+    apiImplement: List<ApiImplement>,
+) : ServiceToolkitApi {
+
+    private val hostMap = getApiHostMap(apiImplement)
 
     private val apiImplementResolver = ApiImplementResolver()
 
-    val handlers = apiImplement.map {
-        it to apiImplementResolver.resolve(it, handlerMap[it.apiCls()]!!)
+    private val handlers = apiImplement.map {
+        it to apiImplementResolver.resolve(it, hostMap[it.apiCls()]!!)
     }.map { (api, handler) ->
         api.uri().getUri(api) bind Method.POST to handler
     }.toList()
 
-    private val app = routes(
-        handlers
-    )
-    private val server = app.asServer(Undertow(port))
+    private val server = routes(handlers).asServer(Undertow(port))
     override fun start() {
         server.start()
     }

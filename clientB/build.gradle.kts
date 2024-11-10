@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm")
+    id("com.google.devtools.ksp")
 }
 
 group = "cn.llonvne"
@@ -10,6 +11,10 @@ repositories {
 }
 
 dependencies {
+    implementation(projects.caller)
+    implementation(projects.clientAApi)
+    ksp(projects.callKsp)
+
     testImplementation(kotlin("test"))
 }
 
