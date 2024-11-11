@@ -1,11 +1,11 @@
 package cn.llonvne.type
 
-class ApplicationMeta(
+data class ApplicationMeta(
     val map: MutableMap<String, ServiceMeta>
 ) {
 }
 
-class ServiceMeta(
+data class ServiceMeta(
     val uri: String,
     val serviceClsName: String
 )

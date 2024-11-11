@@ -34,7 +34,7 @@ class ClientAApiImpl : ClientAApi, ApiImplement {
     }
 
     override fun uri(): UriPolicy {
-        return UriPolicy.Specified("123")
+        return UriPolicy.Specified("123456")
     }
 }
 

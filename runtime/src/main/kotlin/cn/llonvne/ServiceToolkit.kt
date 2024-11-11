@@ -6,9 +6,9 @@ import cn.llonvne.type.ApplicationMeta
 import cn.llonvne.type.ServiceMeta
 import cn.llonvne.type.ServiceResponse
 import cn.llonvne.type.ServiceToolkitApi
-import org.http4k.core.Body
 import kotlin.reflect.KClass
 import kotlin.reflect.full.memberFunctions
+import org.http4k.core.Body
 import org.http4k.core.Method
 import org.http4k.core.Response
 import org.http4k.core.Status
@@ -43,21 +43,29 @@ private class ServiceToolkitApplication(
         apiImplement
             .map { it to apiImplementResolver.resolve(it, hostMap[it.apiCls()]!!) }
             .map { (api, handler) ->
-                applicationMeta.map[api.apiCls().qualifiedName.toString()] = ServiceMeta(
-                    api.uri().getUri(api),
-                    api.apiCls().qualifiedName.toString()
-                )
+                applicationMeta.map[api.apiCls().qualifiedName.toString()] =
+                    ServiceMeta(
+                        api.uri().getUri(api),
+                        api.apiCls().qualifiedName.toString()
+                    )
                 api.uri().getUri(api) bind Method.POST to handler
             }
             .toList()
 
-    val metaHandler = "/meta" bind Method.POST to {
-        Response(Status.OK).with(
-            Body.auto<ServiceResponse<ApplicationMeta>>().toLens() of ServiceResponse(applicationMeta)
-        )
-    }
+    val metaHandler =
+        "/meta" bind
+                Method.POST to
+                {
+                    Response(Status.OK)
+                        .with(
+                            Body.auto<ServiceResponse<ApplicationMeta>>().toLens() of
+                                    ServiceResponse(applicationMeta)
+                        )
+                }
 
-    private val server = routes(handlers.toMutableList().apply { add(metaHandler) }).asServer(Undertow(port))
+    private val server =
+        routes(handlers.toMutableList().apply { add(metaHandler) }).asServer(Undertow(port))
+
     override fun start() {
         server.start()
     }
