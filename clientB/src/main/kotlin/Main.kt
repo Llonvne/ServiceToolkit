@@ -1,7 +1,10 @@
 package cn.llonvne
 
 import cn.llonvne.api.ClientAApi
+import cn.llonvne.api.MetaApi
+import cn.llonvne.type.ApplicationMeta
 import cn.llonvne.type.Message
+import okhttp3.Call
 import org.http4k.client.OkHttp
 import org.http4k.core.Body
 import org.http4k.core.Method.POST
@@ -16,7 +19,6 @@ class ClientAApiCaller : Caller<ClientAApi>(
 }
 
 fun main() {
-    val caller = ClientAApiCaller().instance
-    println(caller.send(Message("Hello", "World")))
-    OkHttp()(Request(POST, "http://localhost:8080/a/send"))
+    val caller = ClientAApiCaller()
+    caller.instance.send(Message("123", "!23"))
 }

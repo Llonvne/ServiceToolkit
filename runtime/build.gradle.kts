@@ -16,6 +16,9 @@ dependencies {
     api("org.http4k:http4k-core")
     api("org.http4k:http4k-format-jackson")
     api("org.http4k:http4k-server-undertow")
+
+    implementation(projects.commonTypes)
+
     testImplementation(kotlin("test"))
 }
 

@@ -7,6 +7,7 @@ import cn.llonvne.type.ApiImplement
 import cn.llonvne.type.ApiNamePolicy
 import cn.llonvne.type.Message
 import cn.llonvne.type.UriPolicy
+import java.util.UUID
 import kotlin.reflect.KClass
 
 @ServiceImpl(ClientAApi::class)
@@ -20,6 +21,10 @@ class ClientAApiImpl : ClientAApi, ApiImplement {
         println("OK")
     }
 
+    override fun login(username: String, password: String): Boolean {
+        return username.length == password.length
+    }
+
     override fun apiCls(): KClass<*> {
         return ClientAApi::class
     }
@@ -29,7 +34,7 @@ class ClientAApiImpl : ClientAApi, ApiImplement {
     }
 
     override fun uri(): UriPolicy {
-        return UriPolicy.Specified("a")
+        return UriPolicy.Specified("123")
     }
 }
 
